@@ -1,0 +1,6 @@
+{
+  "name": "Piano Posture Tracker",
+  "description": "Real-time piano posture monitoring and hand tracking using a Python vision pipeline, .NET backend, and Angular frontend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
