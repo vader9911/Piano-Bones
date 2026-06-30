@@ -1,119 +1,63 @@
-<div class="flex flex-col h-screen w-full bg-[#0A0A0B] text-slate-300 font-sans p-6">
-  <!-- Header Section -->
-  <header class="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-    <div class="flex items-center gap-4">
-      <div class="h-10 w-10 bg-emerald-500 rounded-sm flex items-center justify-center font-bold text-black">PV</div>
+<div class="flex flex-col h-screen w-full bg-[#0A0A0B] text-slate-300 font-sans p-4 relative overflow-hidden">
+  <!-- Header Overlay -->
+  <header class="absolute top-6 left-6 right-6 z-20 flex items-center justify-between pointer-events-none">
+    <div class="flex items-center gap-4 pointer-events-auto">
+      <div class="h-10 w-10 bg-emerald-500 rounded-lg flex items-center justify-center font-bold text-black shadow-lg shadow-emerald-500/20">PV</div>
       <div>
-        <h1 class="text-xl font-bold tracking-tight text-white">POLYPHONY VISION <span class="text-emerald-500">v2.4.0</span></h1>
-        <p class="text-xs font-mono opacity-50 uppercase tracking-widest">Real-time Posture & Hand Telemetry</p>
+        <h1 class="text-xl font-bold tracking-tight text-white">POLYPHONY VISION</h1>
+        <p class="text-xs font-mono opacity-60 uppercase tracking-widest">Assistance Studio</p>
       </div>
     </div>
-    <div class="flex gap-8 text-xs font-mono uppercase tracking-tighter">
-      <div class="flex flex-col">
-        <span class="opacity-40">Pipeline Source</span>
-        <span class="text-emerald-400">Arducam OV9281 (120 FPS)</span>
+    
+    <!-- Future MIDI Controls (Placeholder) -->
+    <div class="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-6 py-2 flex items-center gap-6 pointer-events-auto">
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="opacity-50">MIDI Track:</span>
+        <span class="text-white">None Loaded</span>
       </div>
-      <div class="flex-col">
-        <span class="opacity-40">Link Status</span>
-        @if (connected()) {
-          <span class="text-emerald-400 font-bold">UDP Socket :: Active</span>
-        } @else {
-          <span class="text-red-400 font-bold">Socket :: Disconnected</span>
-        }
-      </div>
-      <div class="flex-col">
-        <span class="opacity-40">Jitter</span>
-        <span class="text-white">{{ jitterMs() }}ms</span>
-      </div>
+      <button class="bg-white/10 hover:bg-white/20 transition-colors px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-white border border-white/5 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        Load MIDI
+      </button>
     </div>
   </header>
 
-  <!-- Main Viewport -->
-  <div class="flex flex-1 gap-6 overflow-hidden">
-    <!-- Left Pane: 3D Visualization -->
-    <div class="flex-[1.6] flex flex-col bg-black/40 rounded-xl border border-white/5 relative overflow-hidden">
-      <div class="absolute top-4 left-4 z-10">
-        <div class="bg-black/60 backdrop-blur px-3 py-1 border border-white/10 rounded text-[10px] font-mono">
-          THREE.JS VIEWPORT // PERSPECTIVE_CAM_01
-        </div>
-      </div>
-      <div class="absolute bottom-4 left-4 z-10 flex gap-2">
-        <div class="bg-emerald-500/10 text-emerald-500 px-3 py-1 border border-emerald-500/30 rounded text-[10px] font-mono">
-          SKELETON_TRACKING: TRUE
-        </div>
-        <div class="bg-white/5 px-3 py-1 border border-white/10 rounded text-[10px] font-mono">
-          LANDMARKS: 21_XYZ
-        </div>
-      </div>
-      
-      <!-- Three.js Canvas Container -->
-      <div class="flex-1 flex items-center justify-center relative w-full h-full" #threeContainer>
-        <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #4ade80 1px, transparent 0); background-size: 32px 32px;"></div>
-      </div>
-    </div>
-
-    <!-- Right Pane: Telemetry & Metrics -->
-    <div class="flex-1 flex flex-col gap-6">
-      <!-- Metric Tiles -->
-      <div class="grid grid-cols-2 gap-4">
-        <div class="bg-white/5 border border-white/10 rounded-lg p-4">
-          <span class="text-[10px] uppercase opacity-40 font-mono">Wrist Height</span>
-          <div class="text-2xl font-mono text-white">{{ wristHeightCm() }} <span class="text-xs text-slate-500">CM</span></div>
-          <div class="w-full bg-white/10 h-1 mt-2 rounded-full">
-            <div class="bg-emerald-500 h-1 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" [style.width]="telemetry.metrics().wristHeightCm + '%'"></div>
-          </div>
-        </div>
-        <div class="bg-white/5 border border-white/10 rounded-lg p-4">
-          <span class="text-[10px] uppercase opacity-40 font-mono">MCP Flexion</span>
-          <div class="text-2xl font-mono text-white">{{ mcpFlexionDeg() }} <span class="text-xs text-slate-500">DEG</span></div>
-          <div class="w-full bg-white/10 h-1 mt-2 rounded-full">
-            <div class="bg-blue-500 h-1 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" [style.width]="(telemetry.metrics().mcpFlexionDeg / 300) * 100 + '%'"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Chart Section -->
-      <div class="flex-1 bg-white/5 border border-white/10 rounded-lg p-4 flex flex-col">
-        <div class="flex justify-between items-center mb-4">
-          <span class="text-[10px] uppercase font-mono tracking-widest text-slate-400">Kinematic Performance (T-60s)</span>
-          <span class="text-[10px] font-mono text-emerald-400 animate-pulse uppercase">Live Stream</span>
-        </div>
-        <div class="flex-1 relative border-l border-b border-white/10 w-full h-full">
-          <canvas #chartCanvas class="w-full h-full"></canvas>
-          <div class="absolute top-0 right-0 flex flex-col gap-1 text-[9px] font-mono opacity-40">
-            <span>VAL: {{ wristHeightCm() }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Alerts/Notifications Log -->
-      <div class="h-40 bg-black/60 border border-white/10 rounded-lg p-3 font-mono text-[10px] overflow-hidden flex flex-col">
-        <div class="flex items-center gap-2 mb-2 text-slate-500">
-          <div class="w-1.5 h-1.5 bg-slate-500 rounded-full"></div>
-          <span>SYSTEM_LOG_OUTPUT</span>
-        </div>
-        <div class="space-y-1.5 opacity-80 overflow-y-auto max-h-full">
-          @for (log of logs(); track $index) {
-            <div class="text-slate-400">{{ log }}</div>
-          }
-        </div>
-      </div>
-    </div>
+  <!-- Main Viewport (Full Stage) -->
+  <div class="absolute inset-0 z-10" #threeContainer>
+    <!-- Background Grid -->
+    <div class="absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(to right, #4ade80 1px, transparent 1px), linear-gradient(to bottom, #4ade80 1px, transparent 1px); background-size: 64px 64px;"></div>
   </div>
 
-  <!-- Footer Bar -->
-  <footer class="mt-6 flex items-center justify-between border-t border-white/5 pt-4 text-[10px] font-mono text-slate-500 uppercase tracking-widest">
-    <div class="flex gap-6">
-      <span>CPU: 12%</span>
-      <span>GPU: 28%</span>
-      <span>NET: 4.2 Mbps</span>
+  <!-- Subtle Status & Telemetry Overlay (Bottom) -->
+  <footer class="absolute bottom-6 left-6 right-6 z-20 flex items-end justify-between pointer-events-none">
+    
+    <!-- System Log (Subtle) -->
+    <div class="w-80 bg-black/40 backdrop-blur-md border border-white/5 rounded-xl p-4 font-mono text-[10px] flex flex-col pointer-events-auto shadow-2xl">
+      <div class="flex items-center gap-2 mb-3 text-slate-500">
+        <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_5px_#10b981]"></div>
+        <span>TRACKING_ACTIVE :: 100FPS</span>
+      </div>
+      <div class="space-y-1 opacity-60">
+        @for (log of logs(); track $index) {
+          <div class="text-slate-400 truncate">{{ log }}</div>
+        }
+      </div>
     </div>
-    <div class="flex gap-4">
-      <span class="flex items-center gap-2">
-        <div class="w-2 h-2 rounded-full shadow-[0_0_5px_#10b981]" [class.bg-emerald-500]="connected()" [class.bg-red-500]="!connected()"></div>
-        WEBSOCKETS_{{ connected() ? 'STABLE' : 'DOWN' }}
-      </span>
-      <span class="text-slate-300 px-2 border-l border-white/10">REF_CLOCK: {{ wristHeightCm() }}</span>
+
+    <!-- Minimal Stats -->
+    <div class="flex gap-4 pointer-events-auto text-xs font-mono uppercase tracking-widest bg-black/40 backdrop-blur-md border border-white/5 px-6 py-3 rounded-xl">
+      <div class="flex gap-6">
+        <div class="flex flex-col">
+          <span class="opacity-40 text-[9px]">Wrist (Y)</span>
+          <span class="text-white">{{ wristHeightCm() }}</span>
+        </div>
+        <div class="flex flex-col border-l border-white/10 pl-6">
+          <span class="opacity-40 text-[9px]">Link</span>
+          <span [class.text-emerald-400]="connected()" [class.text-red-400]="!connected()">
+            {{ connected() ? 'STABLE' : 'DOWN' }}
+          </span>
+        </div>
+      </div>
     </div>
   </footer>
 </div>
