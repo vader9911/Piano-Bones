@@ -8,13 +8,14 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    import mediapipe.python.solutions.hands as mp_hands
+    import mediapipe as mp
+    mp_hands = mp.solutions.hands
     print("Successfully imported mediapipe hands.", flush=True)
 except Exception as e:
     print(f"Error importing mediapipe: {e}", flush=True)
     print("If you are on Windows, try setting PYTHONUTF8=1 before installing:", flush=True)
     print("set PYTHONUTF8=1", flush=True)
-    print("pip install --force-reinstall mediapipe", flush=True)
+    print("pip install --force-reinstall mediapipe==0.10.13", flush=True)
     sys.exit(1)
 
 import socket
@@ -33,6 +34,7 @@ try:
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=2,
+        model_complexity=0,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
@@ -61,7 +63,7 @@ if not cap.isOpened():
 print("Camera opened successfully. Setting resolution and FPS...", flush=True)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-cap.set(cv2.CAP_PROP_FPS, 120)
+cap.set(cv2.CAP_PROP_FPS, 100)
 
 print(f"Starting vision pipeline. Sending telemetry to {UDP_IP}:{UDP_PORT}...", flush=True)
 
@@ -74,7 +76,7 @@ try:
             continue
             
         frame_count += 1
-        if frame_count % 120 == 0:
+        if frame_count % 100 == 0:
             print(f"[{time.strftime('%H:%M:%S')}] Pipeline running... (processed {frame_count} frames)", flush=True)
             
         # Optimization & Hardware Constraint:
@@ -116,10 +118,12 @@ try:
             msg = json.dumps(payload).encode('utf-8')
             sock.sendto(msg, (UDP_IP, UDP_PORT))
             
-        # Display the frame for visual confirmation
-        cv2.imshow('Polyphony Vision (Press q to exit)', rgb_frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # Display the frame for visual confirmation (Disabled to maximize FPS at 100hz)
+        # Uncomment the lines below if you need local visual debugging, 
+        # but note it will significantly reduce the camera framerate.
+        # cv2.imshow('Polyphony Vision (Press q to exit)', rgb_frame)
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
             
 except KeyboardInterrupt:
     print("\nStopping vision pipeline...")

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "P2GiVwxMcPs=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\vader\\Documents\\Coding\\personal\\Piano-Bones\\backend-dotnet\\PolyphonyVision.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\vader\\.nuget\\packages\\melanchall.drywetmidi\\7.2.0\\melanchall.drywetmidi.7.2.0.nupkg.sha512"
+  ],
+  "logs": []
+}
