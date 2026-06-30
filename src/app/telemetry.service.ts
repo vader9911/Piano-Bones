@@ -35,9 +35,10 @@ export class TelemetryService {
     if (typeof window === 'undefined') return;
 
     // Protocol relative WebSocket URL, using same host/port.
-    // In dev, Angular proxy will forward /ws to .NET backend.
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    // Connect directly to the user's local .NET backend running on port 5000.
+    // Since the frontend is hosted but the user's backend is local,
+    // we must use the local address rather than going through the remote proxy.
+    const wsUrl = `ws://127.0.0.1:5000/ws`;
     
     this.log(`Attempting to connect WebSocket to ${wsUrl}...`);
     this.ws = new WebSocket(wsUrl);
