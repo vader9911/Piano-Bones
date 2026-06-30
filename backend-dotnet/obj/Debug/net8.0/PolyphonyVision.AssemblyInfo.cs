@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PolyphonyVision")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+af44128bcb26d3a1151e39ec430d07b9c0a938e1")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+602c6a023eced850addc6d38dd052bb93a647a44")]
 [assembly: System.Reflection.AssemblyProductAttribute("PolyphonyVision")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PolyphonyVision")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
