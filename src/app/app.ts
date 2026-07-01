@@ -90,6 +90,9 @@ export class App implements AfterViewInit, OnDestroy {
   activePointers = new Map<number, number>(); // pointerId -> midi note
   volume = signal(0.5);
 
+  // Keyboard range alignment guides toggle
+  showAlignmentGuides = signal<boolean>(false);
+
   // Web MIDI API state
   connectedMidiDevices = signal<string[]>([]);
   midiSupport = signal<boolean>(true);
@@ -188,6 +191,66 @@ export class App implements AfterViewInit, OnDestroy {
     const val = parseFloat(input.value);
     this.volume.set(val);
     Tone.Destination.volume.value = Tone.gainToDb(val);
+  }
+
+  toggleAlignmentGuides() {
+    this.showAlignmentGuides.set(!this.showAlignmentGuides());
+  }
+
+  getGuideLines(): { percent: number; label: string; color: string }[] {
+    if (!this.pianoKeys || this.pianoKeys.length === 0) {
+      return [];
+    }
+
+    const guides: { percent: number; label: string; color: string }[] = [];
+
+    // Left boundary (0% of screen)
+    guides.push({
+      percent: 0,
+      label: 'A0 (Low Bound)',
+      color: 'border-rose-500/40 text-rose-300 bg-rose-500/10'
+    });
+
+    // Right boundary (100% of screen)
+    guides.push({
+      percent: 100,
+      label: 'C8 (High Bound)',
+      color: 'border-rose-500/40 text-rose-300 bg-rose-500/10'
+    });
+
+    // C octaves
+    const cNotes = [
+      { midi: 24, label: 'C1' },
+      { midi: 36, label: 'C2' },
+      { midi: 48, label: 'C3' },
+      { midi: 60, label: 'C4 (Middle C)' },
+      { midi: 72, label: 'C5' },
+      { midi: 84, label: 'C6' },
+      { midi: 96, label: 'C7' }
+    ];
+
+    for (const note of cNotes) {
+      const mesh = this.pianoKeys[note.midi];
+      if (mesh) {
+        const x = mesh.position.x;
+        // Map x from [-2.0, 2.0] to [0, 100] percent
+        const percent = ((x + 2.0) / 4.0) * 100;
+        
+        // Let's distinguish Middle C with a slightly brighter look
+        const color = note.midi === 60 
+          ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/15 font-bold shadow-emerald-500/20' 
+          : 'border-slate-500/20 text-slate-400 bg-slate-500/5';
+
+        guides.push({
+          percent,
+          label: note.label,
+          color
+        });
+      }
+    }
+
+    // Sort by percentage so they are rendered in sequence
+    return guides.sort((a, b) => a.percent - b.percent);
   }
 
   onKeyPointerDown(event: PointerEvent, midi: number, name: string) {
