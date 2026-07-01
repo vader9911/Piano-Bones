@@ -19,8 +19,10 @@ export class TelemetryService {
   public connected = signal<boolean>(false);
   public logs = signal<string[]>([]);
   public metrics = signal({
-    wristHeightCm: 0,
-    mcpFlexionDeg: 0,
+    leftWristHeightCm: 0,
+    leftMcpFlexionDeg: 0,
+    rightWristHeightCm: 0,
+    rightMcpFlexionDeg: 0,
     jitterMs: 0
   });
 
@@ -61,32 +63,46 @@ export class TelemetryService {
         const payload: TelemetryPayload = JSON.parse(event.data);
         this.data.set(payload);
 
-        // Compute some derived metrics if hands are present
+        // Compute derived metrics for both hands if present
         if (payload.hands.length > 0) {
-          const hand = payload.hands[0];
-          if (hand.landmarks && hand.landmarks.length >= 30) {
-            // Wrist is landmark 0 (x,y,z at indices 0,1,2)
-            // Y is index 1. In MediaPipe, Y is normalized 0.0 to 1.0 (top to bottom).
-            // Let's pretend 1.0 = 50cm for a physical mockup display.
-            const wristY = hand.landmarks[1];
-            const middleMcpY = hand.landmarks[28]; // index 9 Y
+          let leftWristHeightCm = 0;
+          let leftMcpFlexionDeg = 0;
+          let rightWristHeightCm = 0;
+          let rightMcpFlexionDeg = 0;
 
-            const simulatedHeight = Math.max(0, (1.0 - wristY) * 30); // simplistic conversion
-            const simulatedFlexion = Math.abs(middleMcpY - wristY) * 300; 
+          payload.hands.forEach(hand => {
+            if (hand.landmarks && hand.landmarks.length >= 30) {
+              // Wrist is landmark 0 (x,y,z are indices 0,1,2) -> Y is index 1
+              const wristY = hand.landmarks[1];
+              const middleMcpY = hand.landmarks[28]; // middle mcp Y is index 9 * 3 + 1 = 28
 
-            this.metrics.update(m => ({
-              ...m,
-              wristHeightCm: simulatedHeight,
-              mcpFlexionDeg: simulatedFlexion
-            }));
+              const simulatedHeight = Math.max(0, (1.0 - wristY) * 30);
+              const simulatedFlexion = Math.abs(middleMcpY - wristY) * 300;
 
-            if (wristY > middleMcpY + 0.05) {
-              // Throttle warnings
-              if (Math.random() < 0.05) {
-                this.log(`WARN: WRIST_ANGLE_THRESHOLD_EXCEEDED (${simulatedFlexion.toFixed(1)}deg)`);
+              const isLeft = hand.handedness.toLowerCase().includes('left');
+              if (isLeft) {
+                rightWristHeightCm = simulatedHeight;
+                rightMcpFlexionDeg = simulatedFlexion;
+              } else {
+                leftWristHeightCm = simulatedHeight;
+                leftMcpFlexionDeg = simulatedFlexion;
+              }
+
+              if (wristY > middleMcpY + 0.05) {
+                if (Math.random() < 0.02) {
+                  this.log(`WARN: ${hand.handedness.toUpperCase()} WRIST_ANGLE_THRESHOLD_EXCEEDED (${simulatedFlexion.toFixed(1)}deg)`);
+                }
               }
             }
-          }
+          });
+
+          this.metrics.update(m => ({
+            ...m,
+            leftWristHeightCm: leftWristHeightCm || m.leftWristHeightCm,
+            leftMcpFlexionDeg: leftMcpFlexionDeg || m.leftMcpFlexionDeg,
+            rightWristHeightCm: rightWristHeightCm || m.rightWristHeightCm,
+            rightMcpFlexionDeg: rightMcpFlexionDeg || m.rightMcpFlexionDeg
+          }));
         }
       } catch (err) {
         console.error('Failed to parse telemetry', err);
