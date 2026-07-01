@@ -13,12 +13,13 @@
     <div class="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-6 py-2 flex items-center gap-6 pointer-events-auto">
       <div class="flex items-center gap-2 text-xs font-mono">
         <span class="opacity-50">MIDI Track:</span>
-        <span class="text-white">None Loaded</span>
+        <span class="text-white">{{ midiTrackName() }}</span>
       </div>
-      <button class="bg-white/10 hover:bg-white/20 transition-colors px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-white border border-white/5 flex items-center gap-2">
+      <label class="bg-white/10 hover:bg-white/20 transition-colors px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-white border border-white/5 flex items-center gap-2 cursor-pointer">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
         Load MIDI
-      </button>
+        <input type="file" accept=".mid,.midi" class="hidden" (change)="onMidiFileSelected($event)" />
+      </label>
     </div>
   </header>
 

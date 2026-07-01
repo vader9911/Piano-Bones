@@ -1,11 +1,19 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { TelemetryService } from './telemetry.service';
 import * as THREE from 'three';
+import { Midi } from '@tonejs/midi';
 
 interface SkeletonLine {
   line: THREE.Line;
   c1: number;
   c2: number;
+}
+
+interface MidiNote {
+  mesh: THREE.Mesh;
+  midi: number;
+  time: number;
+  duration: number;
 }
 
 @Component({
@@ -24,6 +32,7 @@ export class App implements AfterViewInit, OnDestroy {
   wristHeightCm = computed(() => this.telemetry.metrics().wristHeightCm.toFixed(2));
   connected = computed(() => this.telemetry.connected());
   logs = computed(() => this.telemetry.logs().slice(0, 3)); // Only show top 3 logs
+  midiTrackName = signal<string>('None Loaded');
 
   // Three.js state
   private scene!: THREE.Scene;
@@ -36,6 +45,13 @@ export class App implements AfterViewInit, OnDestroy {
   // Lines connecting the landmarks (MediaPipe skeleton)
   private skeletonLines: SkeletonLine[] = [];
 
+  // MIDI visualization state
+  private pianoKeys: THREE.Mesh[] = [];
+  private fallingNotes: MidiNote[] = [];
+  private midiStartTime = 0;
+  private isMidiPlaying = false;
+  private noteMaterial = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.8 }); // blue-500
+
   ngAfterViewInit() {
     if (typeof window === 'undefined') return;
     this.initThreeJs();
@@ -47,6 +63,49 @@ export class App implements AfterViewInit, OnDestroy {
       cancelAnimationFrame(this.animationFrameId);
     }
     this.renderer?.dispose();
+  }
+
+  async onMidiFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    this.midiTrackName.set(file.name);
+
+    const arrayBuffer = await file.arrayBuffer();
+    const midi = new Midi(arrayBuffer);
+
+    // Clear existing notes
+    this.fallingNotes.forEach(note => this.scene.remove(note.mesh));
+    this.fallingNotes = [];
+
+    // Combine all tracks and create meshes for notes
+    midi.tracks.forEach((track: any) => {
+      track.notes.forEach((note: any) => {
+        // midi is typically 21 to 108 for piano keys (88 keys)
+        // Let's only render if it's within standard piano range
+        if (note.midi >= 21 && note.midi <= 108) {
+          const width = 4.0 / 52; // roughly width of one white key
+          const geometry = new THREE.BoxGeometry(width * 0.8, note.duration * 2, 0.05); // scale duration to length
+          const mesh = new THREE.Mesh(geometry, this.noteMaterial);
+          
+          mesh.position.set(0, -100, 0); // Hide initially
+          this.scene.add(mesh);
+          
+          this.fallingNotes.push({
+            mesh,
+            midi: note.midi,
+            time: note.time,
+            duration: note.duration
+          });
+        }
+      });
+    });
+
+    this.midiStartTime = performance.now() / 1000;
+    this.isMidiPlaying = true;
+    
+    // reset input
+    input.value = '';
   }
 
   private initThreeJs() {
@@ -63,6 +122,52 @@ export class App implements AfterViewInit, OnDestroy {
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(this.renderer.domElement);
+
+    // Create Piano Keys (bounding box representation)
+    const keyWidth = 4.0 / 52;
+    const keyHeight = 0.4;
+    const startX = -2.0 + (keyWidth / 2);
+    const pianoY = -1.2; // Place at the bottom of the view
+
+    const whiteKeyGeo = new THREE.BoxGeometry(keyWidth * 0.9, keyHeight, 0.1);
+    const blackKeyGeo = new THREE.BoxGeometry(keyWidth * 0.6, keyHeight * 0.6, 0.15);
+    const whiteKeyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
+    const blackKeyMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+
+    let whiteKeyIndex = 0;
+    for (let i = 21; i <= 108; i++) {
+      const isBlack = [1, 3, 6, 8, 10].includes(i % 12);
+      let mesh: THREE.Mesh;
+      
+      if (isBlack) {
+        mesh = new THREE.Mesh(blackKeyGeo, blackKeyMat);
+        // Position between the previous and next white key, slightly raised
+        mesh.position.set(startX + (whiteKeyIndex - 0.5) * keyWidth, pianoY + keyHeight * 0.2, 0.05);
+      } else {
+        mesh = new THREE.Mesh(whiteKeyGeo, whiteKeyMat);
+        mesh.position.set(startX + whiteKeyIndex * keyWidth, pianoY, 0);
+        
+        // Add outline to white keys for better visibility
+        const edges = new THREE.EdgesGeometry(whiteKeyGeo);
+        const line = new THREE.LineSegments(edges, outlineMat);
+        mesh.add(line);
+        
+        whiteKeyIndex++;
+      }
+      this.scene.add(mesh);
+      this.pianoKeys[i] = mesh; // store by midi note number
+    }
+
+    // Add boundaries (dots at either side of the piano)
+    const boundaryGeo = new THREE.SphereGeometry(0.04, 16, 16);
+    const boundaryMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e }); // rose-500
+    const leftBound = new THREE.Mesh(boundaryGeo, boundaryMat);
+    leftBound.position.set(-2.0, pianoY, 0);
+    this.scene.add(leftBound);
+    const rightBound = new THREE.Mesh(boundaryGeo, boundaryMat);
+    rightBound.position.set(2.0, pianoY, 0);
+    this.scene.add(rightBound);
 
     // Create 21 spheres for landmarks
     const geometry = new THREE.SphereGeometry(0.02, 16, 16);
@@ -104,8 +209,43 @@ export class App implements AfterViewInit, OnDestroy {
 
   private animate = () => {
     this.animationFrameId = requestAnimationFrame(this.animate);
+    const now = performance.now() / 1000;
 
-    // Update Three.js
+    // Update Three.js MIDI Waterfall
+    if (this.isMidiPlaying) {
+      const elapsedTime = now - this.midiStartTime;
+      const fallSpeed = 2.0; // units per second
+      const pianoY = -1.2;
+
+      this.fallingNotes.forEach(note => {
+        // Calculate Y position based on time difference
+        const timeUntilHit = note.time - elapsedTime;
+        
+        // If it's too far in the future or way past, hide it
+        if (timeUntilHit > 5 || timeUntilHit < -note.duration - 1) {
+          note.mesh.position.y = -100;
+          return;
+        }
+
+        const targetKey = this.pianoKeys[note.midi];
+        if (targetKey) {
+          // Center of the note block
+          const yPos = pianoY + (timeUntilHit * fallSpeed) + (note.duration * fallSpeed / 2);
+          note.mesh.position.set(targetKey.position.x, yPos, targetKey.position.z - 0.05);
+          
+          // Simple visual feedback when note hits the key
+          if (timeUntilHit <= 0 && timeUntilHit >= -note.duration) {
+            (targetKey.material as THREE.Material).opacity = 0.8;
+          } else {
+            // Reset opacity
+            const isBlack = [1, 3, 6, 8, 10].includes(note.midi % 12);
+            (targetKey.material as THREE.Material).opacity = isBlack ? 0.3 : 0.15;
+          }
+        }
+      });
+    }
+
+    // Update Hand Tracking
     const payload = this.telemetry.data();
     if (payload && payload.hands.length > 0) {
       const lm = payload.hands[0].landmarks;
@@ -114,9 +254,10 @@ export class App implements AfterViewInit, OnDestroy {
         for (let i = 0; i < 21; i++) {
           // MediaPipe coords: X, Y [0, 1] from top-left, Z relative.
           // Map to Three.js space: center is 0,0, Y is up.
-          const x = (lm[i * 3] - 0.5) * 3.5; 
-          const y = -(lm[i * 3 + 1] - 0.5) * 3.5;
-          const z = -lm[i * 3 + 2] * 3.5;
+          // Reduced scale from 3.5 to 1.5 to make hand smaller in view
+          const x = (lm[i * 3] - 0.5) * 1.5; 
+          const y = -(lm[i * 3 + 1] - 0.5) * 1.5;
+          const z = -lm[i * 3 + 2] * 1.5;
           this.landmarksMesh[i].position.set(x, y, z);
         }
         
