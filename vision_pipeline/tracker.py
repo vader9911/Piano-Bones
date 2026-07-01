@@ -122,9 +122,9 @@ try:
         # Display the frame for visual confirmation (Disabled to maximize FPS at 120hz)
         # Uncomment the lines below if you need local visual debugging, 
         # but note it will significantly reduce the camera framerate.
-        cv2.imshow('Polyphony Vision (Press q to exit)', rgb_frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-             break
+        # cv2.imshow('Polyphony Vision (Press q to exit)', rgb_frame)
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
             
 except KeyboardInterrupt:
     print("\nStopping vision pipeline...")

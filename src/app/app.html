@@ -10,14 +10,32 @@
     </div>
     
     <!-- Future MIDI Controls (Placeholder) -->
-    <div class="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-6 py-2 flex items-center gap-6 pointer-events-auto">
-      <div class="flex items-center gap-2 text-xs font-mono">
-        <span class="opacity-50">MIDI Track:</span>
-        <span class="text-white">{{ midiTrackName() }}</span>
+    <div class="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-4 py-1.5 flex items-center gap-4 pointer-events-auto">
+      <div class="flex items-center gap-2 text-xs font-mono mr-2">
+        <span class="opacity-50">MIDI:</span>
+        <span class="text-white max-w-[120px] truncate" [title]="midiTrackName()">{{ midiTrackName() }}</span>
       </div>
-      <label class="bg-white/10 hover:bg-white/20 transition-colors px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-white border border-white/5 flex items-center gap-2 cursor-pointer">
+
+      <!-- Playback Controls -->
+      <div class="flex items-center gap-1 border-l border-white/10 pl-4 pr-2">
+        <button (click)="togglePlay()" [disabled]="!midiLoaded()" class="hover:bg-white/10 p-1.5 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+          @if (isMidiPlaying()) {
+            <!-- Pause Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+          } @else {
+            <!-- Play Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          }
+        </button>
+        <button (click)="stopMidi()" [disabled]="!midiLoaded()" class="hover:bg-white/10 p-1.5 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+          <!-- Stop Icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16"></rect></svg>
+        </button>
+      </div>
+
+      <label class="bg-white/10 hover:bg-white/20 transition-colors px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-white border border-white/5 flex items-center gap-2 cursor-pointer ml-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        Load MIDI
+        Load
         <input type="file" accept=".mid,.midi" class="hidden" (change)="onMidiFileSelected($event)" />
       </label>
     </div>

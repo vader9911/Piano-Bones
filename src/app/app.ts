@@ -1,12 +1,26 @@
 import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { TelemetryService } from './telemetry.service';
 import * as THREE from 'three';
+// @ts-expect-error Types are stripped due to globals workaround
 import { Midi } from '@tonejs/midi';
+import * as Tone from 'tone';
 
 interface SkeletonLine {
   line: THREE.Line;
   c1: number;
   c2: number;
+}
+
+interface ToneNote {
+  midi: number;
+  duration: number;
+  time: number;
+  name: string;
+  velocity: number;
+}
+
+interface ToneTrack {
+  notes: ToneNote[];
 }
 
 interface MidiNote {
@@ -45,15 +59,20 @@ export class App implements AfterViewInit, OnDestroy {
   // Lines connecting the landmarks (MediaPipe skeleton)
   private skeletonLines: SkeletonLine[] = [];
 
-  // MIDI visualization state
+  // MIDI visualization & audio state
   private pianoKeys: THREE.Mesh[] = [];
   private fallingNotes: MidiNote[] = [];
   private midiStartTime = 0;
-  private isMidiPlaying = false;
+  private currentPauseTime = 0;
+  isMidiPlaying = signal(false);
+  midiLoaded = signal(false);
+  private midiData: typeof Midi.prototype | null = null;
+  private synth!: Tone.PolySynth;
   private noteMaterial = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.8 }); // blue-500
 
   ngAfterViewInit() {
     if (typeof window === 'undefined') return;
+    this.synth = new Tone.PolySynth(Tone.Synth).toDestination();
     this.initThreeJs();
     this.animate();
   }
@@ -73,19 +92,20 @@ export class App implements AfterViewInit, OnDestroy {
 
     const arrayBuffer = await file.arrayBuffer();
     const midi = new Midi(arrayBuffer);
+    this.midiData = midi;
+    this.midiLoaded.set(true);
 
     // Clear existing notes
     this.fallingNotes.forEach(note => this.scene.remove(note.mesh));
     this.fallingNotes = [];
 
     // Combine all tracks and create meshes for notes
-    midi.tracks.forEach((track: any) => {
-      track.notes.forEach((note: any) => {
+    midi.tracks.forEach((track: ToneTrack) => {
+      track.notes.forEach((note: ToneNote) => {
         // midi is typically 21 to 108 for piano keys (88 keys)
-        // Let's only render if it's within standard piano range
         if (note.midi >= 21 && note.midi <= 108) {
-          const width = 4.0 / 52; // roughly width of one white key
-          const geometry = new THREE.BoxGeometry(width * 0.8, note.duration * 2, 0.05); // scale duration to length
+          const width = 4.0 / 52; 
+          const geometry = new THREE.BoxGeometry(width * 0.8, note.duration * 2, 0.05); 
           const mesh = new THREE.Mesh(geometry, this.noteMaterial);
           
           mesh.position.set(0, -100, 0); // Hide initially
@@ -101,11 +121,52 @@ export class App implements AfterViewInit, OnDestroy {
       });
     });
 
-    this.midiStartTime = performance.now() / 1000;
-    this.isMidiPlaying = true;
+    this.stopMidi();
+    this.togglePlay();
     
-    // reset input
     input.value = '';
+  }
+
+  async togglePlay() {
+    await Tone.start();
+    if (this.isMidiPlaying()) {
+      // Pause
+      this.isMidiPlaying.set(false);
+      this.currentPauseTime = (performance.now() / 1000) - this.midiStartTime;
+      Tone.Transport.pause();
+    } else {
+      // Play
+      this.isMidiPlaying.set(true);
+      if (this.currentPauseTime === 0 && this.midiData) {
+        this.midiStartTime = (performance.now() / 1000);
+        this.scheduleToneNotes();
+      } else {
+        this.midiStartTime = (performance.now() / 1000) - this.currentPauseTime;
+      }
+      Tone.Transport.start();
+    }
+  }
+
+  stopMidi() {
+    this.isMidiPlaying.set(false);
+    this.currentPauseTime = 0;
+    Tone.Transport.stop();
+    Tone.Transport.cancel();
+    this.synth.releaseAll();
+    
+    // reset visuals
+    this.fallingNotes.forEach(n => n.mesh.position.y = -100);
+  }
+
+  private scheduleToneNotes() {
+    Tone.Transport.cancel();
+    this.midiData?.tracks.forEach((track: ToneTrack) => {
+      track.notes.forEach((note: ToneNote) => {
+        Tone.Transport.schedule((time) => {
+          this.synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
+        }, note.time);
+      });
+    });
   }
 
   private initThreeJs() {
@@ -212,7 +273,7 @@ export class App implements AfterViewInit, OnDestroy {
     const now = performance.now() / 1000;
 
     // Update Three.js MIDI Waterfall
-    if (this.isMidiPlaying) {
+    if (this.isMidiPlaying()) {
       const elapsedTime = now - this.midiStartTime;
       const fallSpeed = 2.0; // units per second
       const pianoY = -1.2;
