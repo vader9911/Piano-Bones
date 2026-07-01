@@ -9,6 +9,7 @@ export interface HandData {
 export interface TelemetryPayload {
   timestamp: number;
   hands: HandData[];
+  camera_status?: string;
 }
 
 @Injectable({
@@ -17,6 +18,7 @@ export interface TelemetryPayload {
 export class TelemetryService {
   public data = signal<TelemetryPayload | null>(null);
   public connected = signal<boolean>(false);
+  public cameraStatus = signal<string>('UNKNOWN');
   public logs = signal<string[]>([]);
   public metrics = signal({
     leftWristHeightCm: 0,
@@ -62,6 +64,10 @@ export class TelemetryService {
       try {
         const payload: TelemetryPayload = JSON.parse(event.data);
         this.data.set(payload);
+
+        if (payload.camera_status) {
+          this.cameraStatus.set(payload.camera_status);
+        }
 
         // Compute derived metrics for both hands if present
         if (payload.hands.length > 0) {
@@ -120,7 +126,17 @@ export class TelemetryService {
     };
   }
 
-  private log(msg: string) {
+  sendCommand(command: 'restart_camera' | 'self_test') {
+    if (this.ws && this.connected()) {
+      const payload = { command };
+      this.ws.send(JSON.stringify(payload));
+      this.log(`COMMAND_SENT: ${command.toUpperCase()}`);
+    } else {
+      this.log(`COMMAND_FAILED: WebSocket not connected`);
+    }
+  }
+
+  log(msg: string) {
     const timestamp = new Date().toISOString().split('T')[1].substring(0, 12);
     const formatted = `[${timestamp}] ${msg}`;
     this.logs.update(logs => {

@@ -47,16 +47,39 @@ app.Map("/ws", async context =>
             connectedClients.Add(webSocket);
         }
 
-        var buffer = new byte[1024];
+        var buffer = new byte[4096];
         try
         {
-            // Keep connection alive and watch for client closure
+            // Keep connection alive and watch for client closure or camera commands
             while (webSocket.State == WebSocketState.Open)
             {
                 var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                }
+                else if (result.MessageType == WebSocketMessageType.Text)
+                {
+                    var messageString = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    try
+                    {
+                        using var jsonDoc = JsonDocument.Parse(messageString);
+                        if (jsonDoc.RootElement.TryGetProperty("command", out var commandProp))
+                        {
+                            var commandValue = commandProp.GetString();
+                            if (commandValue == "restart_camera" || commandValue == "self_test")
+                            {
+                                Console.WriteLine($"[WebSocket] Received camera command: {commandValue}. Forwarding to Python on UDP 5006...");
+                                using var udpClient = new UdpClient();
+                                var commandBytes = Encoding.UTF8.GetBytes(messageString);
+                                await udpClient.SendAsync(commandBytes, commandBytes.Length, "127.0.0.1", 5006);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[WebSocket Error] Failed to process incoming client message: {ex.Message}");
+                    }
                 }
             }
         }
@@ -160,6 +183,9 @@ public class TelemetryPayload
 
     [JsonPropertyName("hands")]
     public List<HandData>? Hands { get; set; }
+
+    [JsonPropertyName("camera_status")]
+    public string? CameraStatus { get; set; }
 }
 
 public class HandData

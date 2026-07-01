@@ -63,6 +63,15 @@ export class App implements AfterViewInit, OnDestroy {
   connected = computed(() => this.telemetry.connected());
   logs = computed(() => this.telemetry.logs().slice(0, 3)); // Only show top 3 logs
   midiTrackName = signal<string>('None Loaded');
+  cameraStatus = computed(() => this.telemetry.cameraStatus());
+
+  restartCamera() {
+    this.telemetry.sendCommand('restart_camera');
+  }
+
+  runCameraSelfTest() {
+    this.telemetry.sendCommand('self_test');
+  }
 
   // Three.js state
   private scene!: THREE.Scene;
@@ -92,6 +101,27 @@ export class App implements AfterViewInit, OnDestroy {
 
   // Keyboard range alignment guides toggle
   showAlignmentGuides = signal<boolean>(false);
+
+  // Range calibration state
+  calibrationStep = signal<'none' | 'lowest' | 'highest'>('none');
+  calibratedLowest = signal<number | null>(null);
+  calibratedHighest = signal<number | null>(null);
+
+  // Webcam live feed alignment state
+  showWebcam = signal<boolean>(false);
+  webcamOpacity = signal<number>(0.25);
+  backdropMode = signal<boolean>(false);
+  private webcamStream: MediaStream | null = null;
+
+  // Digital calibration & proportional scaling parameters
+  cameraLeftBoundary = signal<number>(0.0);
+  cameraRightBoundary = signal<number>(1.0);
+  handOverallScale = signal<number>(1.0);
+  handYScale = signal<number>(1.0);
+  handZScale = signal<number>(1.0);
+  handYOffset = signal<number>(0.2); // Vertical position relative to pianoY
+  handZOffset = signal<number>(-0.05);
+  scaleHandWithKeyboard = signal<boolean>(true);
 
   // Web MIDI API state
   connectedMidiDevices = signal<string[]>([]);
@@ -165,6 +195,29 @@ export class App implements AfterViewInit, OnDestroy {
     const fullName = `${noteName}${octave}`;
 
     if (command === 0x90 && velocity > 0) {
+      // Intercept for calibration
+      if (this.calibrationStep() === 'lowest') {
+        this.calibratedLowest.set(midiNote);
+        this.telemetry.log(`CALIBRATION: Lowest note registered: ${fullName} (MIDI ${midiNote})`);
+        this.calibrationStep.set('highest');
+        this.telemetry.log('CALIBRATION: Please play the HIGHEST key on your physical keyboard...');
+        this.playNote(midiNote, fullName);
+        return;
+      } else if (this.calibrationStep() === 'highest') {
+        const lowest = this.calibratedLowest() || 21;
+        if (midiNote > lowest) {
+          this.calibratedHighest.set(midiNote);
+          this.telemetry.log(`CALIBRATION: Highest note registered: ${fullName} (MIDI ${midiNote})`);
+          this.calibrationStep.set('none');
+          this.showAlignmentGuides.set(true); // Automatically show visual guides to align
+          this.telemetry.log(`CALIBRATION SUCCESS: Range calibrated to [${lowest} - ${midiNote}]`);
+        } else {
+          this.telemetry.log(`CALIBRATION ERROR: Highest note must be higher than lowest note (${lowest})`);
+        }
+        this.playNote(midiNote, fullName);
+        return;
+      }
+
       // Note On
       this.playNote(midiNote, fullName);
     } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
@@ -197,6 +250,125 @@ export class App implements AfterViewInit, OnDestroy {
     this.showAlignmentGuides.set(!this.showAlignmentGuides());
   }
 
+  startRangeCalibration() {
+    this.calibrationStep.set('lowest');
+    this.calibratedLowest.set(null);
+    this.calibratedHighest.set(null);
+    this.telemetry.log('CALIBRATION: Please play the LOWEST key on your physical keyboard...');
+  }
+
+  cancelRangeCalibration() {
+    this.calibrationStep.set('none');
+    this.telemetry.log('CALIBRATION: Cancelled');
+  }
+
+  clearRangeCalibration() {
+    this.calibratedLowest.set(null);
+    this.calibratedHighest.set(null);
+    this.telemetry.log('CALIBRATION: Cleared range limits');
+  }
+
+  async toggleWebcam() {
+    if (this.showWebcam()) {
+      this.stopWebcam();
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+        this.webcamStream = stream;
+        this.showWebcam.set(true);
+        this.telemetry.log('WEBCAM: Live alignment feed active');
+
+        // Allow some time for Angular to render the video elements, then attach source
+        setTimeout(() => {
+          const videoElements = document.querySelectorAll('.webcam-video-feed');
+          videoElements.forEach((el) => {
+            const videoEl = el as HTMLVideoElement;
+            if (videoEl) {
+              videoEl.srcObject = stream;
+              videoEl.play().catch((err) => console.error('Video play failed:', err));
+            }
+          });
+        }, 200);
+      } catch (err) {
+        console.error('Failed to access webcam:', err);
+        this.telemetry.log('ERROR: Webcam access denied or not available');
+      }
+    }
+  }
+
+  stopWebcam() {
+    if (this.webcamStream) {
+      this.webcamStream.getTracks().forEach(track => track.stop());
+      this.webcamStream = null;
+    }
+    this.showWebcam.set(false);
+  }
+
+  updateWebcamOpacity(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.webcamOpacity.set(parseFloat(input.value));
+  }
+
+  toggleBackdropMode() {
+    this.backdropMode.set(!this.backdropMode());
+  }
+
+  updateCameraLeftBoundary(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.cameraLeftBoundary.set(parseFloat(input.value));
+  }
+
+  updateCameraRightBoundary(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.cameraRightBoundary.set(parseFloat(input.value));
+  }
+
+  updateHandOverallScale(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.handOverallScale.set(parseFloat(input.value));
+  }
+
+  updateHandYScale(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.handYScale.set(parseFloat(input.value));
+  }
+
+  updateHandZScale(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.handZScale.set(parseFloat(input.value));
+  }
+
+  updateHandYOffset(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.handYOffset.set(parseFloat(input.value));
+  }
+
+  updateHandZOffset(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.handZOffset.set(parseFloat(input.value));
+  }
+
+  toggleScaleHandWithKeyboard() {
+    this.scaleHandWithKeyboard.set(!this.scaleHandWithKeyboard());
+  }
+
+  resetScalingAndOffsets() {
+    this.cameraLeftBoundary.set(0.0);
+    this.cameraRightBoundary.set(1.0);
+    this.handOverallScale.set(1.0);
+    this.handYScale.set(1.0);
+    this.handZScale.set(1.0);
+    this.handYOffset.set(0.2);
+    this.handZOffset.set(-0.05);
+    this.scaleHandWithKeyboard.set(true);
+    this.telemetry.log('CALIBRATION: Reset hand and keyboard mapping variables');
+  }
+
   getGuideLines(): { percent: number; label: string; color: string }[] {
     if (!this.pianoKeys || this.pianoKeys.length === 0) {
       return [];
@@ -218,6 +390,37 @@ export class App implements AfterViewInit, OnDestroy {
       color: 'border-rose-500/40 text-rose-300 bg-rose-500/10'
     });
 
+    // Custom Calibration Bounds (if calibrated)
+    if (this.calibratedLowest() !== null) {
+      const midi = this.calibratedLowest()!;
+      const mesh = this.pianoKeys[midi];
+      if (mesh) {
+        const x = mesh.position.x;
+        const percent = ((x + 2.0) / 4.0) * 100;
+        const name = this.virtualKeys().find(k => k.midi === midi)?.name || `MIDI ${midi}`;
+        guides.push({
+          percent,
+          label: `Calibrated Low: ${name}`,
+          color: 'border-amber-400/80 text-amber-300 bg-amber-500/20 font-bold shadow-amber-500/20'
+        });
+      }
+    }
+
+    if (this.calibratedHighest() !== null) {
+      const midi = this.calibratedHighest()!;
+      const mesh = this.pianoKeys[midi];
+      if (mesh) {
+        const x = mesh.position.x;
+        const percent = ((x + 2.0) / 4.0) * 100;
+        const name = this.virtualKeys().find(k => k.midi === midi)?.name || `MIDI ${midi}`;
+        guides.push({
+          percent,
+          label: `Calibrated High: ${name}`,
+          color: 'border-amber-400/80 text-amber-300 bg-amber-500/20 font-bold shadow-amber-500/20'
+        });
+      }
+    }
+
     // C octaves
     const cNotes = [
       { midi: 24, label: 'C1' },
@@ -230,8 +433,12 @@ export class App implements AfterViewInit, OnDestroy {
     ];
 
     for (const note of cNotes) {
+      // If we have custom range calibration, we can hide/dim guides outside that range
+      const isOutsideCalibrated = (this.calibratedLowest() !== null && note.midi < this.calibratedLowest()!) ||
+                                  (this.calibratedHighest() !== null && note.midi > this.calibratedHighest()!);
+      
       const mesh = this.pianoKeys[note.midi];
-      if (mesh) {
+      if (mesh && !isOutsideCalibrated) {
         const x = mesh.position.x;
         // Map x from [-2.0, 2.0] to [0, 100] percent
         const percent = ((x + 2.0) / 4.0) * 100;
@@ -313,6 +520,7 @@ export class App implements AfterViewInit, OnDestroy {
       cancelAnimationFrame(this.animationFrameId);
     }
     this.renderer?.dispose();
+    this.stopWebcam();
   }
 
   async onMidiFileSelected(event: Event) {
@@ -590,12 +798,41 @@ export class App implements AfterViewInit, OnDestroy {
           const hIndex = isLeft ? 1 : 0; // Swapped: Left maps to Index 1, Right maps to Index 0
           
           isHandActive[hIndex] = true;
+          
+          // Get calibrated keyboard bounds in Three.js coordinate space
+          const lowMidi = this.calibratedLowest() !== null ? this.calibratedLowest()! : 21;
+          const highMidi = this.calibratedHighest() !== null ? this.calibratedHighest()! : 108;
+          
+          const xLow = this.pianoKeys[lowMidi]?.position.x ?? -2.0;
+          const xHigh = this.pianoKeys[highMidi]?.position.x ?? 2.0;
+          const kbSpanX = xHigh - xLow;
+          
+          const cLeft = this.cameraLeftBoundary();
+          const cRight = this.cameraRightBoundary();
+          const cameraSpanX = Math.max(0.01, cRight - cLeft);
+          
+          // Calculate overall proportional scale factor mapping normalized image width to Three.js width
+          const proportionalScale = kbSpanX / cameraSpanX;
+          const baseScale = this.scaleHandWithKeyboard() ? proportionalScale : 1.5;
+
           const landmarks: { x: number; y: number; z: number }[] = [];
           for (let i = 0; i < 21; i++) {
+            const rawX = lm[i * 3];
+            const rawY = lm[i * 3 + 1];
+            const rawZ = lm[i * 3 + 2];
+            
+            // Map X based on camera left/right boundaries relative to the calibrated keyboard
+            const xRelative = (rawX - cLeft) / cameraSpanX;
+            const xMapped = xLow + xRelative * kbSpanX;
+            
+            // Scaled Y (with offset relative to pianoY) and Z
+            const yMapped = -(rawY - 0.5) * baseScale * this.handOverallScale() * this.handYScale() + pianoY + this.handYOffset();
+            const zMapped = -rawZ * baseScale * this.handOverallScale() * this.handZScale() + this.handZOffset();
+
             landmarks.push({
-              x: (lm[i * 3] - 0.5) * 1.5,
-              y: -(lm[i * 3 + 1] - 0.5) * 1.5,
-              z: -lm[i * 3 + 2] * 1.5
+              x: xMapped,
+              y: yMapped,
+              z: zMapped
             });
           }
           handLandmarksList[hIndex] = landmarks;
