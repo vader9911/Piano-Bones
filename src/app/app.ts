@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { TelemetryService } from './telemetry.service';
 import * as THREE from 'three';
-// @ts-expect-error Types are stripped due to globals workaround
 import { Midi } from '@tonejs/midi';
 import * as Tone from 'tone';
 
@@ -70,11 +69,85 @@ export class App implements AfterViewInit, OnDestroy {
   private synth!: Tone.PolySynth;
   private noteMaterial = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.8 }); // blue-500
 
+  // HTML Virtual Keyboard State
+  virtualKeys = signal<{ midi: number; name: string; isBlack: boolean; active: boolean }[]>([]);
+  activePointers = new Map<number, number>(); // pointerId -> midi note
+
   ngAfterViewInit() {
     if (typeof window === 'undefined') return;
     this.synth = new Tone.PolySynth(Tone.Synth).toDestination();
+    this.initVirtualKeyboard();
     this.initThreeJs();
     this.animate();
+  }
+
+  private initVirtualKeyboard() {
+    const keys = [];
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    // We'll use 61 keys (from C2 midi 36 to C7 midi 96) for a nicer view, or 88 keys.
+    // Let's do a 61-key layout (36 to 96) which is 5 octaves.
+    for (let i = 36; i <= 96; i++) {
+      const octave = Math.floor(i / 12) - 1;
+      const noteName = notes[i % 12];
+      const isBlack = noteName.includes('#');
+      keys.push({ midi: i, name: `${noteName}${octave}`, isBlack, active: false });
+    }
+    this.virtualKeys.set(keys);
+  }
+
+  onKeyPointerDown(event: PointerEvent, midi: number, name: string) {
+    const el = event.target as HTMLElement;
+    el.setPointerCapture(event.pointerId); 
+    this.activePointers.set(event.pointerId, midi);
+    this.playNote(midi, name);
+  }
+
+  onKeyPointerUp(event: PointerEvent) {
+    const el = event.target as HTMLElement;
+    if (el.hasPointerCapture(event.pointerId)) {
+      el.releasePointerCapture(event.pointerId);
+    }
+    const midi = this.activePointers.get(event.pointerId);
+    if (midi !== undefined) {
+      const name = this.virtualKeys().find(k => k.midi === midi)?.name;
+      if (name) this.stopNote(midi, name);
+      this.activePointers.delete(event.pointerId);
+    }
+  }
+
+  onKeyPointerEnter(event: PointerEvent, midi: number, name: string) {
+    if (event.buttons > 0 && this.activePointers.has(event.pointerId)) {
+      const oldMidi = this.activePointers.get(event.pointerId)!;
+      if (oldMidi !== midi) {
+        const oldName = this.virtualKeys().find(k => k.midi === oldMidi)?.name;
+        if (oldName) this.stopNote(oldMidi, oldName);
+        this.activePointers.set(event.pointerId, midi);
+        this.playNote(midi, name);
+      }
+    }
+  }
+
+  private playNote(midi: number, name: string) {
+    Tone.start();
+    this.synth.triggerAttack(name);
+    this.setKeyActive(midi, true);
+  }
+
+  private stopNote(midi: number, name: string) {
+    this.synth.triggerRelease(name);
+    this.setKeyActive(midi, false);
+  }
+
+  private setKeyActive(midi: number, active: boolean) {
+    this.virtualKeys.update(keys => {
+      const keyIndex = keys.findIndex(k => k.midi === midi);
+      if (keyIndex > -1) {
+        const newKeys = [...keys];
+        newKeys[keyIndex] = { ...newKeys[keyIndex], active };
+        return newKeys;
+      }
+      return keys;
+    });
   }
 
   ngOnDestroy() {
@@ -156,6 +229,7 @@ export class App implements AfterViewInit, OnDestroy {
     
     // reset visuals
     this.fallingNotes.forEach(n => n.mesh.position.y = -100);
+    this.virtualKeys.update(keys => keys.map(k => ({ ...k, active: false })));
   }
 
   private scheduleToneNotes() {
@@ -164,6 +238,16 @@ export class App implements AfterViewInit, OnDestroy {
       track.notes.forEach((note: ToneNote) => {
         Tone.Transport.schedule((time) => {
           this.synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
+          
+          // Sync visual keyboard using Tone.Draw
+          Tone.Draw.schedule(() => {
+            this.setKeyActive(note.midi, true);
+          }, time);
+          
+          Tone.Draw.schedule(() => {
+            this.setKeyActive(note.midi, false);
+          }, time + note.duration);
+
         }, note.time);
       });
     });

@@ -63,6 +63,54 @@
       </div>
     </div>
 
+    <!-- Virtual Keyboard -->
+    <div class="pointer-events-auto flex justify-center mb-0 mt-auto px-4 w-[60%] shrink-0">
+      <div class="flex relative h-28 w-full bg-[#111] rounded-t-lg border-t border-l border-r border-white/10 p-1 shadow-2xl">
+        <!-- White keys container -->
+        <div class="flex w-full h-full relative">
+          @for (key of virtualKeys(); track key.midi) {
+            @if (!key.isBlack) {
+              <div 
+                class="flex-1 h-full border border-[#222] rounded-b-md transition-colors cursor-pointer select-none active:bg-blue-100"
+                [class.bg-blue-300]="key.active"
+                [class.bg-white]="!key.active"
+                (pointerdown)="onKeyPointerDown($event, key.midi, key.name)"
+                (pointerup)="onKeyPointerUp($event)"
+                (pointerenter)="onKeyPointerEnter($event, key.midi, key.name)"
+                (pointerleave)="onKeyPointerUp($event)">
+              </div>
+            }
+          }
+        </div>
+        
+        <!-- Black keys container (absolute over white keys) -->
+        <div class="absolute inset-x-1 top-1 flex h-16 pointer-events-none">
+          <!-- We need to align black keys. 
+               Since there are 61 keys starting on C, there are 36 white keys.
+               Each white key takes 1/36th width.
+               Black keys are positioned relative to white keys. -->
+          @for (key of virtualKeys(); track key.midi) {
+            @if (!key.isBlack) {
+              <!-- Dummy space for white key width -->
+              <div class="flex-1 relative">
+                <!-- If the NEXT key in midi is black, it means we need a black key on the right boundary of this white key -->
+                @if (virtualKeys()[$index + 1]?.isBlack) {
+                  <div class="absolute -right-[20%] w-[40%] h-full z-10 rounded-b pointer-events-auto cursor-pointer select-none transition-colors border border-[#333]"
+                       [class.bg-blue-500]="virtualKeys()[$index + 1].active"
+                       [class.bg-[#151515]]="!virtualKeys()[$index + 1].active"
+                       (pointerdown)="onKeyPointerDown($event, virtualKeys()[$index + 1].midi, virtualKeys()[$index + 1].name)"
+                       (pointerup)="onKeyPointerUp($event)"
+                       (pointerenter)="onKeyPointerEnter($event, virtualKeys()[$index + 1].midi, virtualKeys()[$index + 1].name)"
+                       (pointerleave)="onKeyPointerUp($event)">
+                  </div>
+                }
+              </div>
+            }
+          }
+        </div>
+      </div>
+    </div>
+
     <!-- Minimal Stats -->
     <div class="flex gap-4 pointer-events-auto text-xs font-mono uppercase tracking-widest bg-black/40 backdrop-blur-md border border-white/5 px-6 py-3 rounded-xl">
       <div class="flex gap-6">
